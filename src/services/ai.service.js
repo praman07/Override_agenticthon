@@ -318,38 +318,50 @@ export const webSearch = tool(
 
 import { retrieveResearchEvidence } from './researchRetrieval.service.js';
 
-export const getStream = async ({ messages, userId }) => {
+export const getStream = async ({ messages, userId, evidence: passedEvidence = null, isRagEnabled = true }) => {
     let hasImageAttachment = false;
 
-    // Automatic Vector DB retrieval from user's uploaded documents
+    // Automatic Vector DB retrieval from user's uploaded documents (only when RAG is enabled)
     let vectorContextText = "";
     const lastUserMessage = [...messages].reverse().find((m) => m.author === "user");
     const latestQuery = lastUserMessage?.content?.trim() || "";
 
-    if (latestQuery && userId) {
+    let evidence = isRagEnabled ? passedEvidence : [];
+    if (isRagEnabled && !evidence && latestQuery && userId) {
         try {
-            const evidence = await retrieveResearchEvidence(latestQuery, {
+            evidence = await retrieveResearchEvidence(latestQuery, {
                 userId,
-                topK: 4,
+                topK: 5,
                 threshold: 0.35,
             });
-
-            if (evidence && evidence.length > 0) {
-                console.log(`[RAG Retrieval] Retrieved ${evidence.length} relevant chunks for: "${latestQuery.slice(0, 50)}"`);
-                vectorContextText =
-                    `\n\n[Retrieved Context from User's Uploaded Documents]:\n` +
-                    evidence
-                        .map((item, idx) => {
-                            const sourceDoc = item.paper?.title || "Document";
-                            const pageInfo = item.source?.pageNumber ? ` (Page ${item.source.pageNumber})` : "";
-                            return `[Source ${idx + 1}: ${sourceDoc}${pageInfo}]\n${item.text}`;
-                        })
-                        .join("\n\n") +
-                    `\n\n[Instruction: If the user's question relates to the uploaded document context, base your answer on it and briefly mention the document title or page (e.g., [Source: filename, p. X]). If not related, answer normally.]\n\n`;
-            }
         } catch (ragErr) {
             console.warn("[RAG Vector Retrieval notice]:", ragErr.message);
         }
+    }
+
+    if (isRagEnabled && evidence && evidence.length > 0) {
+        console.log(`[RAG Retrieval] Grounding response with ${evidence.length} relevant chunks for: "${latestQuery.slice(0, 50)}"`);
+        const docContext = evidence
+            .map((item, idx) => {
+                const sourceDoc = item.paper?.title || item.paperTitle || item.title || "Uploaded Document";
+                const pageNum = item.source?.pageNumber ?? item.pageNumber;
+                const pageInfo = pageNum ? `Page ${pageNum}` : `Section ${idx + 1}`;
+                const scorePct = Math.round((item.score || 0) * 100);
+                return `--- SOURCE [${idx + 1}]: "${sourceDoc}" (${pageInfo}, Match: ${scorePct}%) ---\n${item.text}`;
+            })
+            .join("\n\n");
+
+        vectorContextText =
+            `\n\n=======================================================\n` +
+            `RELEVANT EVIDENCE RETRIEVED FROM USER'S UPLOADED DOCUMENTS:\n` +
+            `=======================================================\n` +
+            docContext +
+            `\n=======================================================\n\n` +
+            `MANDATORY GROUNDING INSTRUCTIONS:\n` +
+            `1. The user has uploaded documents to their knowledge vault. The excerpts above are authoritative text extracted directly from those documents.\n` +
+            `2. You MUST prioritize and ground your answer on these excerpts. Describe and explain the concepts, definitions, algorithms, methods, and findings directly based on this retrieved text.\n` +
+            `3. Explicitly cite the document and page number in your response (e.g., "According to **${evidence[0]?.paper?.title || evidence[0]?.paperTitle || 'the document'}** (Page ${evidence[0]?.source?.pageNumber || evidence[0]?.pageNumber || 1})...").\n` +
+            `4. Provide an accurate, comprehensive, and clear response reflecting what is documented in these sources.\n\n`;
     }
 
     const formattedMessages = messages.map((msg) => {
