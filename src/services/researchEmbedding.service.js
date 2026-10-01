@@ -1,7 +1,18 @@
 import env from '@/lib/env.js';
 
-const GEMINI_EMBEDDING_MODEL = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001';
+const GEMINI_EMBEDDING_MODEL = process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004';
 const EMBEDDING_DIMENSION = 768;
+
+/**
+ * Sanitizes input text so only valid unicode characters are sent to the embedding model.
+ */
+function sanitizeText(str) {
+  if (!str) return '';
+  return str
+    .replace(/[^\P{C}\n\r\t]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 /**
  * Executes a fetch request with exponential backoff and jitter for transient errors (503, 429, 500, 502, 504).
@@ -48,7 +59,8 @@ async function fetchWithRetry(url, options, maxRetries = 4, baseDelay = 1200) {
  * @returns {Promise<number[]>}
  */
 export async function generateEmbedding(text) {
-  if (!text || typeof text !== 'string' || !text.trim()) {
+  const clean = sanitizeText(text);
+  if (!clean) {
     throw new Error('generateEmbedding requires non-empty string input');
   }
 
@@ -65,11 +77,11 @@ export async function generateEmbedding(text) {
     body: JSON.stringify({
       model: `models/${GEMINI_EMBEDDING_MODEL}`,
       content: {
-        parts: [{ text: text.slice(0, 8000) }],
+        parts: [{ text: clean.slice(0, 8000) }],
       },
-      outputDimensionality: EMBEDDING_DIMENSION,
     }),
   });
+
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -111,27 +123,31 @@ export async function generateEmbeddings(texts, batchSize = 10) {
     const chunkBatch = texts.slice(i, i + batchSize);
 
     try {
-      const requests = chunkBatch.map((chunkText) => ({
-        model: `models/${GEMINI_EMBEDDING_MODEL}`,
-        content: {
-          parts: [{ text: (chunkText || '').slice(0, 8000) }],
-        },
-        outputDimensionality: EMBEDDING_DIMENSION,
-      }));
+      const requests = chunkBatch
+        .map((chunkText) => sanitizeText(chunkText))
+        .filter(Boolean)
+        .map((cleanText) => ({
+          model: `models/${GEMINI_EMBEDDING_MODEL}`,
+          content: {
+            parts: [{ text: cleanText.slice(0, 8000) }],
+          },
+        }));
 
-      const response = await fetchWithRetry(batchEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requests }),
-      });
+      if (requests.length === chunkBatch.length) {
+        const response = await fetchWithRetry(batchEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests }),
+        });
 
-      if (response.ok) {
-        const batchData = await response.json();
-        if (Array.isArray(batchData?.embeddings) && batchData.embeddings.length === chunkBatch.length) {
-          for (const item of batchData.embeddings) {
-            allEmbeddings.push(item.values);
+        if (response.ok) {
+          const batchData = await response.json();
+          if (Array.isArray(batchData?.embeddings) && batchData.embeddings.length === chunkBatch.length) {
+            for (const item of batchData.embeddings) {
+              allEmbeddings.push(item.values);
+            }
+            continue;
           }
-          continue;
         }
       }
     } catch (batchErr) {
