@@ -1,7 +1,7 @@
 const isProduction = process.env.NODE_ENV === 'production';
 
 // Support both deployed Vercel URL and local development host seamlessly
-const defaultClientUrl = isProduction ? 'https://chahgpt.vercel.app' : 'http://localhost:3000';
+const defaultClientUrl = isProduction ? 'https://overriderag.vercel.app' : 'http://localhost:3000';
 
 const env = {
     NODE_ENV: process.env.NODE_ENV || 'development',
