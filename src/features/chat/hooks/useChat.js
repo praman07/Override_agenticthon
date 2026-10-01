@@ -23,7 +23,7 @@ const useChat = () => {
             dispatch(selectConversation(conversationId));
             dispatch(fetchSingleConversation(conversationId));
         },
-        send: (message, attachments = []) => dispatch(sendMessage({ message, attachments })),
+        send: (message, attachments = [], taggedDoc = null, isRagEnabled = true) => dispatch(sendMessage({ message, attachments, taggedDoc, isRagEnabled })),
         clearError: () => dispatch(clearChatError()),
         startNewChat: () => dispatch(startNewChat()),
         reset: () => dispatch(resetChat()),
