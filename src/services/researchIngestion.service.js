@@ -79,9 +79,9 @@ export async function processResearchPaper(paperId, fileBuffer, metadataOverride
     paper.status = 'embedding';
     await paper.save();
 
-    // Generate embeddings in batches
+    // Generate embeddings in high-speed parallel batches
     const chunkTexts = rawChunks.map((c) => c.text);
-    const embeddings = await generateEmbeddings(chunkTexts, 5);
+    const embeddings = await generateEmbeddings(chunkTexts, 8);
 
     if (embeddings.length !== rawChunks.length) {
       throw new Error('Embedding count mismatch with chunks.');
@@ -111,8 +111,10 @@ export async function processResearchPaper(paperId, fileBuffer, metadataOverride
 
     await ResearchChunk.insertMany(chunkDocs);
 
-    // Ensure Atlas Vector Search index exists
-    await ensureVectorIndex();
+    // Non-blocking background vector index verification
+    ensureVectorIndex().catch((idxErr) => {
+      console.warn('Atlas vector search index notice:', idxErr.message);
+    });
 
     // 5. Status: ready
     paper.status = 'ready';
