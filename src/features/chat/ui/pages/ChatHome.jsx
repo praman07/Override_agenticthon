@@ -27,7 +27,212 @@ const getAttachmentType = (file) => {
   return 'document';
 };
 
+const RetrievedSources = ({ sources }) => {
+  const [ isCollapsed, setIsCollapsed ] = useState(true);
+  const [ expandedChunkId, setExpandedChunkId ] = useState(null);
+  const [ copiedChunkId, setCopiedChunkId ] = useState(null);
+
+  if (!sources || sources.length === 0) return null;
+
+  const handleCopyChunk = (text, id) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedChunkId(id);
+    setTimeout(() => setCopiedChunkId(null), 2000);
+  };
+
+  return (
+    <div className="mb-3 w-full max-w-3xl rounded-2xl border border-white/10 bg-[#161618] p-3.5 shadow-sm transition">
+      {/* Header bar */}
+      <div
+        className="flex items-center justify-between cursor-pointer select-none"
+        onClick={() => setIsCollapsed(!isCollapsed)}
+      >
+        <div className="flex items-center gap-2">
+          <div className="grid h-6 w-6 place-items-center rounded-lg bg-zinc-800 text-zinc-300 border border-white/5">
+            <svg className="h-3.5 w-3.5 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+          </div>
+          <span className="text-xs font-medium text-zinc-200">
+            Retrieved Sources from Knowledge Vault
+          </span>
+          <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-mono text-zinc-300 border border-white/5">
+            {sources.length} {sources.length === 1 ? 'chunk' : 'chunks'}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 font-medium transition"
+        >
+          <span>{isCollapsed ? 'View Sources' : 'Hide Sources'}</span>
+          <svg
+            className={`h-3.5 w-3.5 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Chunks grid */}
+      {!isCollapsed && (
+        <>
+          <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            {sources.map((src, idx) => {
+              const chunkKey = src.chunkId || `chunk-${idx}`;
+              const scorePercent = Math.round((src.score || 0) * 100);
+
+              return (
+                <div
+                  key={chunkKey}
+                  className="group relative flex flex-col justify-between rounded-xl border border-white/10 bg-zinc-900/90 p-3 hover:border-white/20 transition hover:bg-zinc-900"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-xs">📄</span>
+                        <span className="text-xs font-semibold text-zinc-200 truncate" title={src.paperTitle}>
+                          {src.paperTitle || 'Document'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {src.pageNumber && (
+                          <span className="rounded-md border border-zinc-700 bg-zinc-800/90 px-1.5 py-0.5 text-[10px] font-mono text-zinc-300">
+                            p. {src.pageNumber}
+                          </span>
+                        )}
+                        {scorePercent > 0 && (
+                          <span className="rounded-md border border-zinc-700 bg-zinc-800/90 px-1.5 py-0.5 text-[10px] font-mono font-medium text-slate-400">
+                            {scorePercent}% match
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-zinc-400 font-mono leading-relaxed break-words whitespace-pre-wrap line-clamp-3">
+                      {src.text}
+                    </p>
+                  </div>
+
+                  <div className="mt-2.5 flex items-center justify-between border-t border-white/5 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedChunkId(chunkKey)}
+                      className="text-[11px] text-zinc-400 hover:text-zinc-200 underline decoration-dotted transition"
+                    >
+                      View full text
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCopyChunk(src.text, chunkKey)}
+                      className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 transition"
+                      title="Copy chunk text"
+                    >
+                      {copiedChunkId === chunkKey ? (
+                        <span className="text-emerald-400 font-medium">Copied!</span>
+                      ) : (
+                        <>
+                          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Expanded chunk overlay */}
+          {expandedChunkId && (() => {
+            const expandedSrc = sources.find((s, i) => (s.chunkId || `chunk-${i}`) === expandedChunkId);
+            if (!expandedSrc) return null;
+            const scorePercent = Math.round((expandedSrc.score || 0) * 100);
+            return (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                onClick={() => setExpandedChunkId(null)}
+              >
+                <div
+                  className="relative w-[90vw] max-w-lg max-h-[70vh] overflow-y-auto rounded-xl border border-white/10 bg-zinc-900 p-5 shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-xs">📄</span>
+                      <span className="text-sm font-semibold text-zinc-200 truncate" title={expandedSrc.paperTitle}>
+                        {expandedSrc.paperTitle || 'Document'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {expandedSrc.pageNumber && (
+                        <span className="rounded-md border border-zinc-700 bg-zinc-800/90 px-1.5 py-0.5 text-[10px] font-mono text-zinc-300">
+                          p. {expandedSrc.pageNumber}
+                        </span>
+                      )}
+                      {scorePercent > 0 && (
+                        <span className="rounded-md border border-zinc-700 bg-zinc-800/90 px-1.5 py-0.5 text-[10px] font-mono font-medium text-slate-400">
+                          {scorePercent}% match
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedChunkId(null)}
+                        className="ml-1 rounded-md p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition"
+                        title="Close"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-zinc-400 font-mono leading-relaxed break-words whitespace-pre-wrap">
+                    {expandedSrc.text}
+                  </p>
+
+                  <div className="mt-3 flex items-center justify-end border-t border-white/5 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleCopyChunk(expandedSrc.text, expandedChunkId)}
+                      className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 transition"
+                    >
+                      {copiedChunkId === expandedChunkId ? (
+                        <span className="text-emerald-400 font-medium">Copied!</span>
+                      ) : (
+                        <>
+                          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </>
+
+      )}
+    </div>
+  );
+};
+
 const ChatHome = () => {
+  const { user } = useAuth();
+  const { messages, isSending, error, send, clearError, selectedConversationId } = useChat();
+
   const [ message, setMessage ] = useState('');
   const [ attachments, setAttachments ] = useState([]);
   const [ isReadingFiles, setIsReadingFiles ] = useState(false);
@@ -37,6 +242,37 @@ const ChatHome = () => {
   const [ isListening, setIsListening ] = useState(false);
   const [ audioLevels, setAudioLevels ] = useState(Array(35).fill(12));
   const [ isUserScrolledUp, setIsUserScrolledUp ] = useState(false);
+  const [ taggedDoc, setTaggedDoc ] = useState(null);
+  const [ isRagEnabled, setIsRagEnabled ] = useState(() => {
+    try {
+      const stored = localStorage.getItem('override_rag_enabled');
+      return stored !== null ? stored === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleRag = () => {
+    setIsRagEnabled((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('override_rag_enabled', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    try {
+      const savedTag = sessionStorage.getItem('tagged_document');
+      if (savedTag) {
+        setTaggedDoc(JSON.parse(savedTag));
+        sessionStorage.removeItem('tagged_document');
+      }
+    } catch (e) {
+      console.warn('Failed parsing tagged document:', e);
+    }
+  }, [ selectedConversationId ]);
 
   const messagesEndRef = useRef(null);
   const chatContainerRef = useRef(null);
@@ -48,9 +284,6 @@ const ChatHome = () => {
   const audioContextRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const animFrameRef = useRef(null);
-
-  const { user } = useAuth();
-  const { messages, isSending, error, send, clearError, selectedConversationId } = useChat();
 
   const handleScroll = () => {
     if (!chatContainerRef.current) return;
@@ -343,12 +576,13 @@ const ChatHome = () => {
 
     const messageToSend = message;
     const attachmentsToSend = [ ...attachments ];
+    const currentTaggedDoc = taggedDoc;
 
     setMessage('');
     setAttachments([]);
 
     scrollToBottom();
-    await send(messageToSend, attachmentsToSend);
+    await send(messageToSend, attachmentsToSend, currentTaggedDoc, isRagEnabled);
   };
 
   const hasMessages = messages.length > 0;
@@ -369,6 +603,16 @@ const ChatHome = () => {
               <div key={chatMessage.id}>
                 {chatMessage.author === 'user' ? (
                   <div className="group ml-auto flex w-fit max-w-[85%] sm:max-w-2xl flex-col items-end gap-2">
+                    {/* Render tagged document badge if present */}
+                    {(chatMessage.taggedDoc || chatMessage.taggedDocument) && (
+                      <div className="flex items-center gap-1.5 rounded-full border border-white/15 bg-zinc-900/90 px-3 py-1 text-xs text-zinc-200 shadow-sm">
+                        <span className="text-zinc-400">📄 Tagged:</span>
+                        <span className="font-semibold text-white truncate max-w-[200px]">
+                          {(chatMessage.taggedDoc || chatMessage.taggedDocument).title}
+                        </span>
+                      </div>
+                    )}
+
                     {/* Render attachments as separate cards above the text prompt */}
                     {chatMessage.attachments && chatMessage.attachments.length > 0 ? (
                       <div className="flex flex-wrap justify-end gap-2 max-w-full">
@@ -419,6 +663,11 @@ const ChatHome = () => {
                   </div>
                 ) : (
                   <div className="group space-y-2">
+                    {/* Retrieved Sources from Knowledge Vault */}
+                    {chatMessage.sources && chatMessage.sources.length > 0 ? (
+                      <RetrievedSources sources={chatMessage.sources} />
+                    ) : null}
+
                     <div className="markdown-content max-w-3xl text-[15px] leading-7 text-zinc-100">
                       {chatMessage.content ? (
                         <ReactMarkdown remarkPlugins={[ remarkGfm ]} rehypePlugins={[ rehypeHighlight ]}>
@@ -511,6 +760,28 @@ const ChatHome = () => {
 
           {/* Form container */}
           <div className="rounded-[30px] border border-white/10 bg-[#2a2a2b] p-2.5 shadow-[0_20px_50px_rgba(0,0,0,0.45)]">
+
+            {/* Tagged Document Chip */}
+            {taggedDoc && (
+              <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-2xl bg-zinc-800/95 border border-white/15 text-xs text-white mb-2 shadow-sm">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-zinc-400 font-medium">📄 Tagged:</span>
+                  <span className="font-semibold text-white truncate max-w-[260px]">{taggedDoc.title}</span>
+                  {taggedDoc.chunkCount > 0 && (
+                    <span className="text-[10px] text-zinc-400 font-mono">({taggedDoc.chunkCount} chunks)</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTaggedDoc(null)}
+                  className="rounded-full p-1 text-zinc-400 hover:text-white hover:bg-zinc-700 transition focus:outline-none"
+                  title="Remove document tag"
+                  aria-label="Remove document tag"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             {/* Attachment preview tray */}
             {attachments.length > 0 ? (
@@ -634,16 +905,68 @@ const ChatHome = () => {
 
                 {/* Bottom Action Controls Bar */}
                 <div className="flex items-center justify-between pt-1 border-t border-white/5">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isSending || isReadingFiles}
-                    className="grid h-8 w-8 place-items-center rounded-full text-zinc-400 transition hover:bg-white/10 hover:text-zinc-200 disabled:opacity-40 text-xl font-light"
-                    aria-label="Add attachment"
-                    title="Attach Image, PDF, DOCX, or PPTX"
-                  >
-                    +
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isSending || isReadingFiles}
+                      className="grid h-8 w-8 place-items-center rounded-full text-zinc-400 transition hover:bg-white/10 hover:text-zinc-200 disabled:opacity-40 text-xl font-light"
+                      aria-label="Add attachment"
+                      title="Attach Image, PDF, DOCX, or PPTX"
+                    >
+                      +
+                    </button>
+
+                    {/* Minimalist Knowledge Base (RAG) On / Off Toggle */}
+                    <button
+                      type="button"
+                      onClick={handleToggleRag}
+                      disabled={isSending || isReadingFiles}
+                      className={`group flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium transition-all duration-200 border ${
+                        isRagEnabled
+                          ? 'border-white/20 bg-zinc-800/90 text-white shadow-sm hover:border-white/30'
+                          : 'border-white/10 bg-transparent text-zinc-500 hover:border-white/20 hover:text-zinc-300'
+                      }`}
+                      title={
+                        isRagEnabled
+                          ? 'Knowledge Base is ON: Vector search & document retrieval active'
+                          : 'Knowledge Base is OFF: Direct LLM answer only (no document search)'
+                      }
+                      aria-label="Toggle Knowledge Base"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <svg
+                          className={`h-3.5 w-3.5 transition-colors ${isRagEnabled ? 'text-zinc-200' : 'text-zinc-500'}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                          />
+                        </svg>
+                        <span className="text-[11px] font-medium tracking-tight">
+                          {isRagEnabled ? 'Knowledge Base' : 'Direct LLM'}
+                        </span>
+                      </div>
+
+                      {/* Minimalist Switch Track & Thumb */}
+                      <span
+                        className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out ${
+                          isRagEnabled ? 'bg-white' : 'bg-zinc-700'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-3 w-3 transform rounded-full transition duration-200 ease-in-out mt-0.5 ${
+                            isRagEnabled ? 'translate-x-3.5 bg-black' : 'translate-x-0.5 bg-zinc-400'
+                          }`}
+                        />
+                      </span>
+                    </button>
+                  </div>
 
                   <div className="flex items-center gap-2.5">
                     {/* Voice-to-Text Microphone Button */}
