@@ -4,7 +4,7 @@ import { HumanMessage, AIMessage, tool } from "langchain";
 import env from "@/lib/env.js";
 import Context from "@/models/context.model.js";
 import * as z from "zod";
-import { PDFParse } from "pdf-parse";
+import { extractPagesFromPdf } from "./researchOCR.service.js";
 import mammoth from "mammoth";
 import { parseOffice } from "officeparser";
 
@@ -131,12 +131,10 @@ export async function processDocumentAttachment(attachment) {
 
     try {
         if (mimeType === "application/pdf" || name.toLowerCase().endsWith(".pdf")) {
-            if (typeof PDFParse === "function") {
-                const parser = new PDFParse({ data: buffer });
-                const pdfText = await parser.getText();
-                if (pdfText && pdfText.trim()) {
-                    return pdfText.trim();
-                }
+            const parsed = await extractPagesFromPdf(buffer, name);
+            const fullText = (parsed?.pages || []).map((p) => p.text).join("\n\n").trim();
+            if (fullText) {
+                return fullText;
             }
         }
 

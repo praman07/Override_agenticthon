@@ -230,26 +230,6 @@ export default function DocumentsPage() {
           </div>
         </div>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="rounded-2xl border border-white/10 bg-zinc-950/60 p-5 space-y-1 backdrop-blur-md">
-            <span className="text-xs uppercase font-mono tracking-wider text-zinc-500">Total Documents</span>
-            <div className="text-2xl font-semibold text-white">{papers.length}</div>
-            <p className="text-[11px] text-zinc-500">Available across all chats</p>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-zinc-950/60 p-5 space-y-1 backdrop-blur-md">
-            <span className="text-xs uppercase font-mono tracking-wider text-zinc-500">Vector Chunks</span>
-            <div className="text-2xl font-semibold text-white">{totalChunks}</div>
-            <p className="text-[11px] text-zinc-500">768-dimensional embeddings</p>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-zinc-950/60 p-5 space-y-1 backdrop-blur-md">
-            <span className="text-xs uppercase font-mono tracking-wider text-zinc-500">Grounding Mode</span>
-            <div className="text-2xl font-semibold text-emerald-400">Zero-Config RAG</div>
-            <p className="text-[11px] text-zinc-500">Auto-retrieved in standard chat</p>
-          </div>
-        </div>
 
         {/* Aceternity Style File Upload Dropzone */}
         <div className="space-y-4">

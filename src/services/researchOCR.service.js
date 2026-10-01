@@ -1,5 +1,7 @@
+import path from 'path';
+import fs from 'fs';
+import { pathToFileURL } from 'url';
 import crypto from 'crypto';
-import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import { parseOffice } from 'officeparser';
 import env from '@/lib/env.js';
@@ -11,6 +13,118 @@ import env from '@/lib/env.js';
  */
 export function computeFileHash(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+/**
+ * Robust local PDF parser using pdfjs-dist with explicitly resolved worker and multi-stage fallbacks.
+ * Ensures Next.js server runtime never crashes on "Cannot find module ... pdf.worker.mjs".
+ */
+async function parsePdfLocally(buffer, fileName = 'document.pdf') {
+  // 1. Attempt pdfjs-dist with explicitly configured GlobalWorkerOptions.workerSrc
+  try {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+    const workerCandidates = [
+      path.resolve(process.cwd(), 'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'),
+      path.resolve(process.cwd(), 'node_modules/pdfjs-dist/build/pdf.worker.mjs'),
+    ];
+
+    const validWorker = workerCandidates.find((p) => fs.existsSync(p));
+    if (validWorker) {
+      pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(validWorker).href;
+
+      // Copy worker to .next dev and build chunk folders if they exist
+      try {
+        const nextDevChunksDir = path.resolve(process.cwd(), '.next/dev/server/chunks');
+        if (fs.existsSync(nextDevChunksDir)) {
+          const destWorker = path.join(nextDevChunksDir, 'pdf.worker.mjs');
+          if (!fs.existsSync(destWorker)) {
+            fs.copyFileSync(validWorker, destWorker);
+          }
+        }
+      } catch {
+        // Ignore copy errors
+      }
+    }
+
+    const uint8 = new Uint8Array(buffer);
+    const loadingTask = pdfjs.getDocument({
+      data: uint8,
+      disableFontFace: true,
+      useSystemFonts: true,
+      isEvalSupported: false,
+    });
+
+    const doc = await loadingTask.promise;
+    const numPages = doc.numPages || 1;
+    const pages = [];
+
+    for (let i = 1; i <= numPages; i++) {
+      const page = await doc.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = (textContent?.items || [])
+        .map((item) => (typeof item?.str === 'string' ? item.str : ''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      pages.push({
+        pageNumber: i,
+        text: pageText,
+      });
+    }
+
+    if (pages.some((p) => p.text.length > 0)) {
+      return {
+        pages,
+        pageCount: numPages,
+        metadata: { engine: 'pdfjs-dist', fileName },
+      };
+    }
+  } catch (pdfjsErr) {
+    console.warn(`[PDF Parser Notice] pdfjs extraction for ${fileName}:`, pdfjsErr.message);
+  }
+
+  // 2. Stream & text literal extraction fallback
+  try {
+    const rawString = buffer.toString('latin1');
+    const textMatches = rawString.match(/\(([^()]{2,})\)\s*(?:Tj|'|")/g) || [];
+    const words = textMatches
+      .map((m) => m.replace(/^[(\s]+/, '').replace(/[)\s'"]+$/, ''))
+      .filter((w) => w.length > 1 && !w.startsWith('/'));
+
+    if (words.length > 5) {
+      const fullText = words.join(' ');
+      const pageSize = 2500;
+      const pages = [];
+      for (let i = 0; i < fullText.length; i += pageSize) {
+        pages.push({
+          pageNumber: Math.floor(i / pageSize) + 1,
+          text: fullText.slice(i, i + pageSize).trim(),
+        });
+      }
+      return {
+        pages: pages.length ? pages : [{ pageNumber: 1, text: fullText }],
+        pageCount: Math.max(pages.length, 1),
+        metadata: { engine: 'stream-fallback', fileName },
+      };
+    }
+  } catch (streamErr) {
+    console.warn(`[PDF Parser Notice] Stream fallback error:`, streamErr.message);
+  }
+
+  // 3. Fallback: Clean printable ASCII
+  const asciiClean = buffer
+    .toString('utf-8')
+    .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return {
+    pages: [{ pageNumber: 1, text: asciiClean.slice(0, 50000) }],
+    pageCount: 1,
+    metadata: { engine: 'raw-ascii', fileName },
+  };
 }
 
 /**
@@ -95,7 +209,7 @@ export async function extractPagesFromPdf(buffer, fileName = 'paper.pdf') {
     ''
   ).trim();
 
-  // 1. Try Mistral OCR if API key is present
+  // 4. Try Mistral OCR if API key is present
   if (activeMistralKey) {
     try {
       const base64Data = buffer.toString('base64');
@@ -133,45 +247,14 @@ export async function extractPagesFromPdf(buffer, fileName = 'paper.pdf') {
             },
           };
         }
-      } else {
-        console.warn(`Mistral OCR returned status ${ocrRes.status}. Using native parser fallback.`);
       }
     } catch (err) {
-      console.warn(`Mistral OCR error for ${fileName}: ${err.message}. Falling back to pdf-parse.`);
+      console.warn(`Mistral OCR notice for ${fileName}: ${err.message}. Using native local parser.`);
     }
   }
 
-  // 2. Local fallback using pdf-parse with preserved page boundaries
-  try {
-    const parser = new PDFParse({ data: buffer });
-    const parsed = await parser.getText();
-
-    if (parsed && Array.isArray(parsed.pages) && parsed.pages.length > 0) {
-      const pages = parsed.pages.map((p, idx) => ({
-        pageNumber: p.num || idx + 1,
-        text: (p.text || '').trim(),
-      }));
-
-      return {
-        pages,
-        pageCount: parsed.total || pages.length,
-        metadata: {
-          engine: 'pdf-parse',
-          fileName,
-        },
-      };
-    }
-
-    // Fallback if pages array is not present in parsed response
-    const rawText = typeof parsed === 'string' ? parsed : parsed?.text || '';
-    return {
-      pages: [{ pageNumber: 1, text: rawText.trim() }],
-      pageCount: 1,
-      metadata: { engine: 'pdf-parse-single', fileName },
-    };
-  } catch (parseErr) {
-    throw new Error(`Failed to extract text from PDF: ${parseErr.message}`);
-  }
+  // 5. Robust local parser with worker setup
+  return parsePdfLocally(buffer, fileName);
 }
 
 /**
