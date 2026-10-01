@@ -14,11 +14,74 @@ export function computeFileHash(buffer) {
 }
 
 /**
- * Robust, production-grade PDF parser.
- * Supports pdf-parse v2 (PDFParse class) and v1 callable function.
+ * Extracts text from scanned/image-heavy PDFs using Gemini Flash Multimodal OCR.
+ * Automatically called if local parsers cannot extract text.
+ */
+async function extractWithGeminiOCR(buffer, fileName) {
+  const apiKey = (process.env.GEMINI_API_KEY || env.GEMINI_API_KEY || '').trim();
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY not configured for PDF OCR');
+  }
+
+  const base64Data = buffer.toString('base64');
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            {
+              text: 'Extract all readable text, titles, headings, and tables from this PDF document into clear Markdown or plain text. Preserve page sections if detectable.',
+            },
+            {
+              inlineData: {
+                mimeType: 'application/pdf',
+                data: base64Data,
+              },
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Gemini OCR failed (${response.status}): ${errText}`);
+  }
+
+  const data = await response.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const clean = text.trim();
+
+  if (!clean) {
+    throw new Error('Gemini OCR returned empty text');
+  }
+
+  const pageSize = 2500;
+  const pages = [];
+  for (let i = 0; i < clean.length; i += pageSize) {
+    pages.push({
+      pageNumber: Math.floor(i / pageSize) + 1,
+      text: clean.slice(i, i + pageSize).trim(),
+    });
+  }
+
+  return {
+    pages: pages.length ? pages : [{ pageNumber: 1, text: clean }],
+    pageCount: pages.length || 1,
+    metadata: { engine: 'gemini-2.5-flash-ocr', fileName },
+  };
+}
+
+/**
+ * Robust local PDF parser using PDFParse, pdfjs, and intelligent stream analysis.
  */
 async function parsePdfLocally(buffer, fileName = 'document.pdf') {
-  // 1. Primary engine: pdf-parse v2 class (newest standard)
+  // 1. pdf-parse v2 class
   try {
     const pdfParseModule = await import('pdf-parse');
     const PDFParseClass = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse;
@@ -33,7 +96,7 @@ async function parsePdfLocally(buffer, fileName = 'document.pdf') {
             pageNumber: p.num || idx + 1,
             text: (p.text || '').replace(/\s+/g, ' ').trim(),
           }))
-          .filter((p) => p.text.length > 0);
+          .filter((p) => p.text.length > 0 && !p.text.includes('%PDF-') && p.text.length > 20);
 
         if (validPages.length > 0) {
           return {
@@ -44,7 +107,7 @@ async function parsePdfLocally(buffer, fileName = 'document.pdf') {
         }
       }
 
-      if (textResult?.text && textResult.text.trim().length > 0) {
+      if (textResult?.text && textResult.text.trim().length > 30 && !textResult.text.includes('%PDF-')) {
         const cleanText = textResult.text.replace(/\s+/g, ' ').trim();
         const pageSize = 2500;
         const pages = [];
@@ -61,33 +124,11 @@ async function parsePdfLocally(buffer, fileName = 'document.pdf') {
         };
       }
     }
-
-    // Fallback for pdf-parse v1 (callable function)
-    const callableParser = typeof pdfParseModule === 'function' ? pdfParseModule : pdfParseModule.default;
-    if (typeof callableParser === 'function') {
-      const data = await callableParser(buffer);
-      if (data?.text && data.text.trim().length > 0) {
-        const cleanText = data.text.replace(/\s+/g, ' ').trim();
-        const pageSize = 2500;
-        const pages = [];
-        for (let i = 0; i < cleanText.length; i += pageSize) {
-          pages.push({
-            pageNumber: Math.floor(i / pageSize) + 1,
-            text: cleanText.slice(i, i + pageSize).trim(),
-          });
-        }
-        return {
-          pages: pages.length ? pages : [{ pageNumber: 1, text: cleanText }],
-          pageCount: data.numpages || pages.length,
-          metadata: { engine: 'pdf-parse-v1', fileName },
-        };
-      }
-    }
   } catch (pdfParseErr) {
     console.warn(`[PDF Parser Notice] pdf-parse extraction failed for ${fileName}:`, pdfParseErr.message);
   }
 
-  // 2. Fallback: Extract plain text using pdfjs-dist if available
+  // 2. pdfjs-dist fallback
   try {
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const uint8 = new Uint8Array(buffer);
@@ -110,7 +151,7 @@ async function parsePdfLocally(buffer, fileName = 'document.pdf') {
         .replace(/\s+/g, ' ')
         .trim();
 
-      if (pageText) {
+      if (pageText && pageText.length > 10) {
         pages.push({ pageNumber: i, text: pageText });
       }
     }
@@ -126,7 +167,43 @@ async function parsePdfLocally(buffer, fileName = 'document.pdf') {
     console.warn(`[PDF Parser Notice] pdfjs fallback failed for ${fileName}:`, pdfjsErr.message);
   }
 
-  throw new Error(`Failed to extract readable text from PDF: ${fileName}. The PDF may be scanned or empty.`);
+  // 3. Automated Gemini Multimodal OCR fallback for scanned/complex PDFs
+  try {
+    console.log(`[PDF Parser] Local parsing produced no text for ${fileName}. Running Gemini OCR...`);
+    return await extractWithGeminiOCR(buffer, fileName);
+  } catch (ocrErr) {
+    console.warn(`[PDF Parser Notice] Gemini OCR fallback failed: ${ocrErr.message}`);
+  }
+
+  // 4. Final fallback: Extract any readable string literals
+  try {
+    const rawString = buffer.toString('latin1');
+    const textMatches = rawString.match(/\(([^()]{3,})\)\s*(?:Tj|'|")/g) || [];
+    const words = textMatches
+      .map((m) => m.replace(/^[(\s]+/, '').replace(/[)\s'"]+$/, ''))
+      .filter((w) => w.length > 2 && !w.startsWith('/') && /^[\x20-\x7E\s]+$/.test(w));
+
+    if (words.length > 20) {
+      const fullText = words.join(' ');
+      const pageSize = 2500;
+      const pages = [];
+      for (let i = 0; i < fullText.length; i += pageSize) {
+        pages.push({
+          pageNumber: Math.floor(i / pageSize) + 1,
+          text: fullText.slice(i, i + pageSize).trim(),
+        });
+      }
+      return {
+        pages: pages.length ? pages : [{ pageNumber: 1, text: fullText }],
+        pageCount: Math.max(pages.length, 1),
+        metadata: { engine: 'stream-fallback', fileName },
+      };
+    }
+  } catch (streamErr) {
+    console.warn(`[PDF Parser Notice] Stream fallback error:`, streamErr.message);
+  }
+
+  throw new Error(`Failed to extract readable text from PDF: ${fileName}. The PDF could not be processed.`);
 }
 
 /**
@@ -255,7 +332,7 @@ export async function extractPagesFromPdf(buffer, fileName = 'paper.pdf') {
     }
   }
 
-  // 5. Robust local parser with pdf-parse v2 class
+  // 5. Robust local parser with Gemini OCR fallback
   return parsePdfLocally(buffer, fileName);
 }
 
