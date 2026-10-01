@@ -217,7 +217,7 @@ export default function ChatLayout({ children }) {
                 </button>
               </div>
 
-              <div className="p-3">
+              <div className="p-3 space-y-2">
                 <button
                   type="button"
                   onClick={() => startNewChat()}
@@ -226,6 +226,19 @@ export default function ChatLayout({ children }) {
                   <span>New chat</span>
                   <span className="text-base text-zinc-400">+</span>
                 </button>
+
+                <Link
+                  href="/research"
+                  className="flex w-full items-center justify-between rounded-xl border border-amber-500/20 bg-amber-950/20 px-3.5 py-2 text-xs font-semibold text-amber-300 hover:bg-amber-950/40 transition group"
+                >
+                  <div className="flex items-center gap-2">
+                    <span>🔬</span>
+                    <span>Research Assistant</span>
+                  </div>
+                  <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300">
+                    RAG
+                  </span>
+                </Link>
               </div>
 
               <div className="flex-1 overflow-y-auto px-3 py-1 space-y-4 chat-scrollbar">

@@ -8,6 +8,9 @@
     "start": "next start",
     "lint": "eslint"
   },
+  "imports": {
+    "@/*": "./src/*"
+  },
   "dependencies": {
     "@langchain/google-genai": "^2.3.2",
     "@langchain/mistralai": "^1.2.0",

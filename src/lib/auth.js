@@ -4,8 +4,8 @@ import env from '@/lib/env.js';
 export const cookieOptions = {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
-    sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60, // 7 days in seconds for Next.js cookies
     path: '/',
 };
 
@@ -33,7 +33,7 @@ export const sanitizeUser = (user) => ({
  * @returns {{ id: string } | null}
  */
 export function getAuthenticatedUser(request) {
-    const authHeader = request.headers.get('authorization');
+    const authHeader = request.headers?.get ? request.headers.get('authorization') : null;
     let token = null;
 
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -41,13 +41,19 @@ export function getAuthenticatedUser(request) {
     }
 
     if (!token) {
-        const cookieHeader = request.headers.get('cookie') || '';
-        const cookieMap = {};
-        cookieHeader.split(';').forEach((c) => {
-            const [k, v] = c.trim().split('=');
-            if (k) cookieMap[k] = decodeURIComponent(v || '');
-        });
-        token = cookieMap[env.COOKIE_NAME];
+        if (request?.cookies && typeof request.cookies.get === 'function') {
+            token = request.cookies.get(env.COOKIE_NAME)?.value;
+        }
+
+        if (!token && request?.headers?.get) {
+            const cookieHeader = request.headers.get('cookie') || '';
+            const cookieMap = {};
+            cookieHeader.split(';').forEach((c) => {
+                const [k, v] = c.trim().split('=');
+                if (k) cookieMap[k] = decodeURIComponent(v || '');
+            });
+            token = cookieMap[env.COOKIE_NAME];
+        }
     }
 
     if (!token) {

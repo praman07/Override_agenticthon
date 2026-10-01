@@ -5,6 +5,9 @@ import MessageModel from '@/models/message.model.js';
 import { getStream, processDocumentAttachment } from '@/services/ai.service.js';
 import { getAuthenticatedUser } from '@/lib/auth.js';
 
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
 const ALLOWED_DOC_TYPES = [
     "application/pdf",

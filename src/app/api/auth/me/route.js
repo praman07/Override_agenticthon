@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb.js';
 import User from '@/models/user.model.js';
 import { getAuthenticatedUser, sanitizeUser } from '@/lib/auth.js';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request) {
     try {
         const authUser = getAuthenticatedUser(request);

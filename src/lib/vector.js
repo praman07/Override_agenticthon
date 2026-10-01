@@ -1,17 +1,37 @@
 /**
- * Vector database client and operations placeholder.
- *
- * NOTE: Preserved integration interface for vector operations.
- * Future RAG implementations will utilize this server-side service.
+ * Vector database client and operations for MongoDB Atlas Vector Search.
+ * Server-side only.
  */
 
+import {
+  ensureVectorIndex,
+  vectorSearchChunks,
+  cosineSimilarity,
+  VECTOR_INDEX_NAME,
+  EMBEDDING_DIMENSION,
+} from '@/services/researchVector.service.js';
+
 export async function getVectorStore() {
-    // Preserved integration interface - kept server-side only
-    return null;
+  await ensureVectorIndex();
+  return {
+    indexName: VECTOR_INDEX_NAME,
+    dimension: EMBEDDING_DIMENSION,
+    search: vectorSearchChunks,
+  };
 }
 
+export {
+  ensureVectorIndex,
+  vectorSearchChunks,
+  cosineSimilarity,
+  VECTOR_INDEX_NAME,
+  EMBEDDING_DIMENSION,
+};
+
 const vectorService = {
-    getVectorStore,
+  getVectorStore,
+  ensureVectorIndex,
+  vectorSearchChunks,
 };
 
 export default vectorService;

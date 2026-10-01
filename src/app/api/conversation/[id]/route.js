@@ -4,6 +4,8 @@ import ConversationModel from '@/models/conversation.model.js';
 import MessageModel from '@/models/message.model.js';
 import { getAuthenticatedUser } from '@/lib/auth.js';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request, { params }) {
     try {
         const authUser = getAuthenticatedUser(request);
