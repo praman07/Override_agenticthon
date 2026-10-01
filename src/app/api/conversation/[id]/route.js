@@ -44,6 +44,8 @@ export async function GET(request, { params }) {
                 mimeType: att.mimeType,
                 url: att.url,
             })),
+            sources: msg.sources || [],
+            taggedDocument: msg.taggedDocument || null,
             createdAt: msg.createdAt,
         }));
 
