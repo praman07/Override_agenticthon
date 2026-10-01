@@ -1,0 +1,34 @@
+# ==============================================================================
+# Override AI Environment Variables
+# ==============================================================================
+
+# Application URL (handles both localhost for local dev and production URL)
+# Local: http://localhost:3000
+# Production: https://chahgpt.vercel.app
+CLIENT_URL=http://localhost:3000
+
+# Auth Cookie Name
+COOKIE_NAME=token
+
+# Google Gemini API Key
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Mistral AI API Key (Optional fallback & document OCR)
+MISTRAL_API_KEY=
+
+# JWT Configuration
+JWT_SECRET=your_jwt_secret_here
+JWT_EXPIRES_IN=7d
+
+# MongoDB Connection String (Supports both MONGO_URI and MONGODB_URI)
+MONGO_URI=mongodb+srv://<username>:<password>@cluster0.example.mongodb.net/gpt-clone
+
+# Node Environment ('development' | 'production')
+NODE_ENV=development
+
+# Server Port
+PORT=3000
+
+# Vector Database (Preserved for RAG phase)
+VECTOR_DB_URL=
+VECTOR_DB_API_KEY=
