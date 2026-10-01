@@ -268,6 +268,11 @@ const ChatHome = () => {
       if (savedTag) {
         setTaggedDoc(JSON.parse(savedTag));
         sessionStorage.removeItem('tagged_document');
+        // Auto turn on knowledge base when a document is tagged
+        setIsRagEnabled(true);
+        try {
+          localStorage.setItem('override_rag_enabled', 'true');
+        } catch {}
       }
     } catch (e) {
       console.warn('Failed parsing tagged document:', e);
