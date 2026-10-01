@@ -202,16 +202,11 @@ export default function DocumentsPage() {
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-white/10 pb-8">
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/15 bg-white/5 text-[11px] font-mono tracking-wider uppercase text-zinc-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Vector Database Active</span>
-            </div>
+            
             <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-white">
               Document Vault
             </h1>
-            <p className="text-sm text-zinc-400 max-w-xl leading-relaxed">
-              Upload real PDFs, Word files (DOCX), Text files, or Markdown. Documents are automatically indexed into MongoDB Atlas vector storage and retrieved directly when chatting in the outer window.
-            </p>
+      
           </div>
 
           <div className="flex items-center gap-3">
