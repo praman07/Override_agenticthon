@@ -27,7 +27,20 @@ const messageSchema = new mongoose.Schema({
             mimeType: { type: String, required: true },
             extractedText: { type: String, default: '' },
         }
-    ]
+    ],
+    sources: [
+        {
+            chunkId: { type: String, default: '' },
+            paperTitle: { type: String, default: '' },
+            pageNumber: { type: Number, default: null },
+            score: { type: Number, default: 0 },
+            text: { type: String, default: '' },
+        }
+    ],
+    taggedDocument: {
+        id: { type: String, default: null },
+        title: { type: String, default: null },
+    }
 }, {
     timestamps: true
 });
