@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb.js';
 import ConversationModel from '@/models/conversation.model.js';
 import MessageModel from '@/models/message.model.js';
 import { getStream, processDocumentAttachment } from '@/services/ai.service.js';
+import { retrieveResearchEvidence } from '@/services/researchRetrieval.service.js';
 import { getAuthenticatedUser } from '@/lib/auth.js';
 
 export const dynamic = 'force-dynamic';
@@ -119,6 +120,8 @@ export async function GET(request) {
                     mimeType: att.mimeType,
                     url: att.url,
                 })),
+                sources: message.sources || [],
+                taggedDocument: message.taggedDocument || null,
                 createdAt: message.createdAt,
             });
         }
@@ -158,7 +161,14 @@ export async function POST(request) {
         await connectDB();
 
         const body = await request.json();
-        const { message = "", conversationId, attachments: rawAttachments = [] } = body;
+        const {
+            message = "",
+            conversationId,
+            attachments: rawAttachments = [],
+            taggedPaperId = null,
+            taggedPaperTitle = null,
+            isRagEnabled = true,
+        } = body;
         const trimmedMessage = message.trim();
 
         if (!trimmedMessage && rawAttachments.length === 0) {
@@ -193,7 +203,7 @@ export async function POST(request) {
         if (!conversationId) {
             const cleanTitle = trimmedMessage 
                 ? trimmedMessage.replace(/^["']|["']$/g, '').slice(0, 32).trim() 
-                : (sanitizedAttachments[0]?.name || "New Chat");
+                : (sanitizedAttachments[0]?.name || (taggedPaperTitle ? `Chat: ${taggedPaperTitle}` : "New Chat"));
             conversation = await ConversationModel.create({
                 title: cleanTitle,
                 user: authUser.id,
@@ -217,15 +227,41 @@ export async function POST(request) {
             content: trimmedMessage,
             attachments: sanitizedAttachments,
             author: "user",
+            taggedDocument: taggedPaperId ? { id: taggedPaperId, title: taggedPaperTitle } : undefined,
         });
 
         const messages = await MessageModel.find({ conversation: conversation._id })
             .sort({ createdAt: 1 })
             .lean();
 
+        // 1. Retrieve relevant evidence chunks from user's uploaded documents in Vector DB (only if RAG is enabled)
+        let retrievedSources = [];
+        if (isRagEnabled && trimmedMessage && authUser.id) {
+            try {
+                const evidence = await retrieveResearchEvidence(trimmedMessage, {
+                    userId: authUser.id,
+                    paperId: taggedPaperId || null,
+                    topK: 5,
+                    threshold: taggedPaperId ? 0.25 : 0.35,
+                });
+
+                if (Array.isArray(evidence) && evidence.length > 0) {
+                    retrievedSources = evidence.map((e) => ({
+                        chunkId: e.chunkId || '',
+                        paperTitle: e.paper?.title || 'Uploaded Document',
+                        pageNumber: e.source?.pageNumber ?? null,
+                        score: typeof e.score === 'number' ? Number(e.score.toFixed(4)) : 0,
+                        text: e.text || '',
+                    }));
+                }
+            } catch (retrievalErr) {
+                console.warn('[RAG Retrieval notice]:', retrievalErr.message);
+            }
+        }
+
         let stream;
         try {
-            stream = await getStream({ messages, userId: authUser.id });
+            stream = await getStream({ messages, userId: authUser.id, evidence: retrievedSources, isRagEnabled });
         } catch (aiErr) {
             console.error("AI Service Error:", aiErr.message);
             const isRateLimit = aiErr.message.includes("429") || aiErr.message.toLowerCase().includes("rate limit");
@@ -246,6 +282,11 @@ export async function POST(request) {
         const customReadable = new ReadableStream({
             async start(controller) {
                 let assistantReply = "";
+
+                // Stream retrieved source chunks immediately to the UI if available
+                if (retrievedSources.length > 0) {
+                    controller.enqueue(encoder.encode(`event: sources\ndata: ${JSON.stringify(retrievedSources)}\n\n`));
+                }
 
                 try {
                     for await (const chunk of stream) {
@@ -291,6 +332,7 @@ export async function POST(request) {
                             conversation: currentConvId,
                             content: assistantReply,
                             author: "ai",
+                            sources: retrievedSources,
                         });
                     } catch (dbErr) {
                         console.error("Failed saving assistant message:", dbErr.message);
