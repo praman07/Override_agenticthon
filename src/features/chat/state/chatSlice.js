@@ -95,7 +95,7 @@ export const deleteConversation = createAsyncThunk(
 
 export const sendMessage = createAsyncThunk(
     'chat/sendMessage',
-    async ({ message = '', attachments = [] }, { dispatch, getState, rejectWithValue }) => {
+    async ({ message = '', attachments = [], taggedDoc = null, isRagEnabled = true }, { dispatch, getState, rejectWithValue }) => {
         const trimmedMessage = message.trim();
 
         if (!trimmedMessage && attachments.length === 0) {
@@ -104,14 +104,20 @@ export const sendMessage = createAsyncThunk(
 
         const previousConversationId = getState().chat.selectedConversationId;
 
-        dispatch(appendUserMessage({ message: trimmedMessage, attachments }));
+        dispatch(appendUserMessage({ message: trimmedMessage, attachments, taggedDoc }));
         dispatch(startAssistantMessage());
 
         try {
-            const { conversationId, conversationTitle } = await sendMessageApi({
+            const { conversationId, conversationTitle, sources } = await sendMessageApi({
                 message: trimmedMessage,
                 attachments,
                 conversationId: previousConversationId,
+                taggedPaperId: taggedDoc?.id,
+                taggedPaperTitle: taggedDoc?.title,
+                isRagEnabled,
+                onSources: (retrievedSources) => {
+                    dispatch(setAssistantSources(retrievedSources));
+                },
                 onToken: (token) => {
                     dispatch(appendAssistantToken(token));
                 },
@@ -121,6 +127,7 @@ export const sendMessage = createAsyncThunk(
                 conversationId,
                 conversationTitle,
                 previousConversationId,
+                sources,
             };
         } catch (error) {
             return rejectWithValue(error.message || 'Unable to send message');
@@ -133,12 +140,13 @@ const chatSlice = createSlice({
     initialState,
     reducers: {
         appendUserMessage: (state, action) => {
-            const { message, attachments = [] } = action.payload || {};
+            const { message, attachments = [], taggedDoc = null } = action.payload || {};
             state.messages.push({
                 id: `user-${Date.now()}`,
                 author: 'user',
                 content: message || '',
                 attachments,
+                taggedDoc,
             });
 
             syncCurrentMessagesToSelectedConversation(state);
@@ -148,9 +156,17 @@ const chatSlice = createSlice({
                 id: `ai-${Date.now()}`,
                 author: 'ai',
                 content: '',
+                sources: [],
             });
 
             syncCurrentMessagesToSelectedConversation(state);
+        },
+        setAssistantSources: (state, action) => {
+            const lastMessage = state.messages[ state.messages.length - 1 ];
+            if (lastMessage && lastMessage.author === 'ai') {
+                lastMessage.sources = action.payload || [];
+                syncCurrentMessagesToSelectedConversation(state);
+            }
         },
         appendAssistantToken: (state, action) => {
             const lastMessage = state.messages[ state.messages.length - 1 ];
@@ -165,6 +181,7 @@ const chatSlice = createSlice({
                 id: `ai-${Date.now()}`,
                 author: 'ai',
                 content: action.payload,
+                sources: [],
             });
 
             syncCurrentMessagesToSelectedConversation(state);
@@ -288,7 +305,12 @@ const chatSlice = createSlice({
             .addCase(sendMessage.fulfilled, (state, action) => {
                 state.isSending = false;
 
-                const { conversationId, conversationTitle, previousConversationId } = action.payload || {};
+                const { conversationId, conversationTitle, previousConversationId, sources } = action.payload || {};
+
+                const lastMessage = state.messages[ state.messages.length - 1 ];
+                if (lastMessage && lastMessage.author === 'ai' && sources && sources.length > 0) {
+                    lastMessage.sources = sources;
+                }
 
                 if (!conversationId) {
                     return;
@@ -339,6 +361,7 @@ const chatSlice = createSlice({
 export const {
     appendUserMessage,
     startAssistantMessage,
+    setAssistantSources,
     appendAssistantToken,
     selectConversation,
     clearChatError,
