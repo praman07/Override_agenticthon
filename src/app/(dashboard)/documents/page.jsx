@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useAuth from '@/features/auth/hooks/useAuth.js';
 import useChat from '@/features/chat/hooks/useChat.js';
+import Spinner from '@/components/ui/spinner.jsx';
 
 export default function DocumentsPage() {
   const router = useRouter();
@@ -161,8 +162,21 @@ export default function DocumentsPage() {
     }
   };
 
-  // Open chat and query about paper
+  // Open chat and tag paper in chat prompt
   const handleChatWithDoc = (paper) => {
+    if (!paper) return;
+    try {
+      sessionStorage.setItem(
+        'tagged_document',
+        JSON.stringify({
+          id: paper.id,
+          title: paper.title,
+          chunkCount: paper.chunkCount || 0,
+        })
+      );
+    } catch (e) {
+      console.warn('Failed saving tagged document:', e);
+    }
     startNewChat();
     router.push('/chat');
   };
@@ -255,10 +269,7 @@ export default function DocumentsPage() {
             <div className="flex flex-col items-center justify-center space-y-4">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/15 bg-zinc-900 text-zinc-200 group-hover:scale-110 group-hover:border-white/30 transition duration-300">
                 {isUploading ? (
-                  <svg className="h-6 w-6 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                  </svg>
+                  <Spinner className="h-6 w-6 text-white" />
                 ) : (
                   <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -280,7 +291,10 @@ export default function DocumentsPage() {
                 <div className="w-full max-w-md mt-4 rounded-xl border border-white/15 bg-zinc-900/90 p-3.5 space-y-2 text-left">
                   <div className="flex items-center justify-between text-xs text-zinc-200">
                     <span className="font-mono truncate">{uploadProgress.fileName}</span>
-                    <span className="text-emerald-400 animate-pulse font-medium">Processing</span>
+                    <span className="flex items-center gap-1.5 text-zinc-300 font-medium">
+                      <Spinner className="h-3.5 w-3.5 text-zinc-300" />
+                      Processing
+                    </span>
                   </div>
                   <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
                     <div className="bg-white h-1.5 rounded-full animate-pulse w-3/4" />
@@ -389,15 +403,7 @@ export default function DocumentsPage() {
                         </span>
 
                         <div className="flex items-center gap-1.5">
-                          <span
-                            className={`h-2 w-2 rounded-full ${
-                              paper.status === 'indexed'
-                                ? 'bg-emerald-400'
-                                : paper.status === 'failed'
-                                ? 'bg-rose-400'
-                                : 'bg-amber-400 animate-pulse'
-                            }`}
-                          />
+                         
                           <span className="text-[11px] font-medium text-zinc-400 capitalize">
                             {paper.status === 'indexed' ? 'Ready for Chat' : paper.status}
                           </span>
@@ -443,12 +449,10 @@ export default function DocumentsPage() {
                         <button
                           type="button"
                           onClick={() => handleChatWithDoc(paper)}
-                          className="px-2.5 py-1 rounded-lg border border-white/10 bg-zinc-900 text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition flex items-center gap-1"
+                          className="px-3 py-1 rounded-lg border border-white/20 bg-white text-black text-xs font-semibold hover:bg-zinc-200 transition flex items-center gap-1 shadow-sm"
+                          title={`Chat with ${paper.title}`}
                         >
-                          <span>Chat</span>
-                          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                          </svg>
+                          <span>Chat →</span>
                         </button>
                       </div>
 
