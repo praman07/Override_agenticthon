@@ -9,6 +9,7 @@ const env = {
     CLIENT_URL: process.env.CLIENT_URL || defaultClientUrl,
     COOKIE_NAME: process.env.COOKIE_NAME || 'token',
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
+    GEMINI_EMBEDDING_MODEL: process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001',
     MISTRALAI_API_KEY: process.env.MISTRALAI_API_KEY || process.env.MISTRAL_API_KEY || '',
     JWT_SECRET: process.env.JWT_SECRET || 'TOjRVUIilaeatr50ICcexGRF3Kz8XMrNnmocvuM66yQ',
     JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',

@@ -34,7 +34,7 @@ export async function POST(request) {
 
       if (!file || typeof file === 'string') {
         return NextResponse.json(
-          { error: 'No PDF file provided in upload request' },
+          { error: 'No document file provided in upload request' },
           { status: 400 }
         );
       }

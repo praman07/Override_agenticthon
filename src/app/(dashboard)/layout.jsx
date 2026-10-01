@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import useAuth from '@/features/auth/hooks/useAuth.js';
 import useChat from '@/features/chat/hooks/useChat.js';
 import ConfirmModal from '@/features/chat/ui/components/ConfirmModal.jsx';
@@ -148,6 +149,9 @@ const SidebarChatItem = ({ conversation, isSelected, onSelect, onRename, onToggl
 };
 
 export default function ChatLayout({ children }) {
+  const router = useRouter();
+  const pathname = usePathname();
+
   const [ isSidebarOpen, setIsSidebarOpen ] = useState(true);
   const [ isLogoutModalOpen, setIsLogoutModalOpen ] = useState(false);
   const [ isSwitchModalOpen, setIsSwitchModalOpen ] = useState(false);
@@ -175,6 +179,20 @@ export default function ChatLayout({ children }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ userId ]);
+
+  const handleSelectConversation = (id) => {
+    chooseConversation(id);
+    if (pathname !== '/chat') {
+      router.push('/chat');
+    }
+  };
+
+  const handleNewChat = () => {
+    startNewChat();
+    if (pathname !== '/chat') {
+      router.push('/chat');
+    }
+  };
 
   const handleLogoutConfirm = async () => {
     setIsLogoutModalOpen(false);
@@ -220,23 +238,41 @@ export default function ChatLayout({ children }) {
               <div className="p-3 space-y-2">
                 <button
                   type="button"
-                  onClick={() => startNewChat()}
-                  className="flex w-full items-center justify-between rounded-xl border border-white/15 bg-zinc-900 px-3.5 py-2.5 text-sm font-medium text-zinc-100 transition hover:bg-zinc-800"
+                  onClick={handleNewChat}
+                  className="flex w-full items-center justify-between rounded-xl border border-white/15 bg-zinc-900 px-3.5 py-2.5 text-sm font-medium text-zinc-100 transition hover:bg-zinc-800 hover:border-white/30"
                 >
                   <span>New chat</span>
                   <span className="text-base text-zinc-400">+</span>
                 </button>
 
+                {/* Single Page Documents Vault Toggle Button */}
                 <Link
-                  href="/research"
-                  className="flex w-full items-center justify-between rounded-xl border border-amber-500/20 bg-amber-950/20 px-3.5 py-2 text-xs font-semibold text-amber-300 hover:bg-amber-950/40 transition group"
+                  href={pathname === '/documents' ? '/chat' : '/documents'}
+                  className={`flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-xs font-medium transition group ${
+                    pathname === '/documents'
+                      ? 'border-white/40 bg-zinc-800 text-white shadow-sm'
+                      : 'border-white/10 bg-zinc-900/70 text-zinc-300 hover:border-white/25 hover:bg-zinc-800/80 hover:text-white'
+                  }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span>🔬</span>
-                    <span>Research Assistant</span>
+                  <div className="flex items-center gap-2.5">
+                    {pathname === '/documents' ? (
+                      <>
+                        <svg className="h-4 w-4 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                        <span className="font-semibold">Back to Chat</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="h-4 w-4 text-zinc-400 group-hover:text-white transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span className="font-semibold">Manage Documents</span>
+                      </>
+                    )}
                   </div>
-                  <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300">
-                    RAG
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/10 bg-zinc-950 text-zinc-400 group-hover:text-zinc-200">
+                    Vault
                   </span>
                 </Link>
               </div>
@@ -264,7 +300,7 @@ export default function ChatLayout({ children }) {
                               key={item.id}
                               conversation={item}
                               isSelected={selectedConversationId === item.id}
-                              onSelect={chooseConversation}
+                              onSelect={handleSelectConversation}
                               onRename={rename}
                               onTogglePin={togglePin}
                               onDelete={remove}
@@ -286,7 +322,7 @@ export default function ChatLayout({ children }) {
                               key={item.id}
                               conversation={item}
                               isSelected={selectedConversationId === item.id}
-                              onSelect={chooseConversation}
+                              onSelect={handleSelectConversation}
                               onRename={rename}
                               onTogglePin={togglePin}
                               onDelete={remove}

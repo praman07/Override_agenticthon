@@ -318,8 +318,41 @@ export const webSearch = tool(
     }
 );
 
+import { retrieveResearchEvidence } from './researchRetrieval.service.js';
+
 export const getStream = async ({ messages, userId }) => {
     let hasImageAttachment = false;
+
+    // Automatic Vector DB retrieval from user's uploaded documents
+    let vectorContextText = "";
+    const lastUserMessage = [...messages].reverse().find((m) => m.author === "user");
+    const latestQuery = lastUserMessage?.content?.trim() || "";
+
+    if (latestQuery && userId) {
+        try {
+            const evidence = await retrieveResearchEvidence(latestQuery, {
+                userId,
+                topK: 4,
+                threshold: 0.35,
+            });
+
+            if (evidence && evidence.length > 0) {
+                console.log(`[RAG Retrieval] Retrieved ${evidence.length} relevant chunks for: "${latestQuery.slice(0, 50)}"`);
+                vectorContextText =
+                    `\n\n[Retrieved Context from User's Uploaded Documents]:\n` +
+                    evidence
+                        .map((item, idx) => {
+                            const sourceDoc = item.paper?.title || "Document";
+                            const pageInfo = item.source?.pageNumber ? ` (Page ${item.source.pageNumber})` : "";
+                            return `[Source ${idx + 1}: ${sourceDoc}${pageInfo}]\n${item.text}`;
+                        })
+                        .join("\n\n") +
+                    `\n\n[Instruction: If the user's question relates to the uploaded document context, base your answer on it and briefly mention the document title or page (e.g., [Source: filename, p. X]). If not related, answer normally.]\n\n`;
+            }
+        } catch (ragErr) {
+            console.warn("[RAG Vector Retrieval notice]:", ragErr.message);
+        }
+    }
 
     const formattedMessages = messages.map((msg) => {
         const textContent = msg.content || "";
@@ -366,13 +399,21 @@ export const getStream = async ({ messages, userId }) => {
         }
     });
 
-    // Attach system instruction to user prompt without adding an extra conversational turn
+    // Attach system instruction and retrieved vector context to latest user prompt
     const systemPromptText = `[System Instructions: You are Override AI, a powerful, helpful AI assistant. Respond directly, promptly, and concisely. Current Date: ${new Date().toDateString()}]\n\n`;
 
     const fullMessages = formattedMessages.map((msg, idx) => {
         if (idx === formattedMessages.length - 1 && msg instanceof HumanMessage) {
+            const extraContext = vectorContextText ? vectorContextText + "User Question: " : "";
             if (typeof msg.content === "string") {
-                return new HumanMessage(systemPromptText + msg.content);
+                return new HumanMessage(systemPromptText + extraContext + msg.content);
+            } else if (Array.isArray(msg.content)) {
+                return new HumanMessage({
+                    content: [
+                        { type: "text", text: systemPromptText + extraContext },
+                        ...msg.content,
+                    ],
+                });
             }
         }
         return msg;

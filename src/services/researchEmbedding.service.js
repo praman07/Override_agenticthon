@@ -1,6 +1,6 @@
 import env from '@/lib/env.js';
 
-const GEMINI_EMBEDDING_MODEL = 'gemini-embedding-001';
+const GEMINI_EMBEDDING_MODEL = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001';
 const EMBEDDING_DIMENSION = 768;
 
 /**
