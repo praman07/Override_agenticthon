@@ -37,24 +37,48 @@ const parseJsonResponse = async (response) => {
     return data;
 };
 
-const readSseChunk = (chunk) => {
-    const lines = chunk.split('\n');
+const processSseBlock = (block, onSources) => {
+    if (!block || !block.trim()) return null;
+
+    const lines = block.split('\n');
+    let isSourcesEvent = false;
     const dataLines = [];
 
     for (const line of lines) {
-        if (!line.startsWith('data:')) {
+        const trimmed = line.trim();
+        if (trimmed === 'event: sources') {
+            isSourcesEvent = true;
             continue;
         }
 
-        let value = line.slice(5);
-        if (value.startsWith(' ')) {
-            value = value.slice(1);
+        if (line.startsWith('data:')) {
+            let value = line.slice(5);
+            if (value.startsWith(' ')) {
+                value = value.slice(1);
+            }
+            dataLines.push(value);
         }
-
-        dataLines.push(value);
     }
 
-    return dataLines.join('\n');
+    if (isSourcesEvent) {
+        try {
+            const rawJson = dataLines.join('\n');
+            const parsedSources = JSON.parse(rawJson);
+            if (Array.isArray(parsedSources)) {
+                onSources?.(parsedSources);
+                return { type: 'sources', sources: parsedSources };
+            }
+        } catch (e) {
+            console.warn('Failed parsing sources event payload:', e);
+        }
+        return { type: 'sources', sources: [] };
+    }
+
+    if (dataLines.length > 0) {
+        return { type: 'token', text: dataLines.join('\n') };
+    }
+
+    return null;
 };
 
 const API_BASE = '';
@@ -62,15 +86,15 @@ const API_BASE = '';
 /**
  * Sends a chat message with optional attachments and streams token chunks from backend SSE response.
  *
- * @param {{message: string, attachments?: Array<any>, conversationId?: string | null, onToken?: (token: string, fullText: string) => void}} params
- * @returns {Promise<{conversationId: string | null, conversationTitle: string | null, reply: string}>}
+ * @param {{message: string, attachments?: Array<any>, conversationId?: string | null, onToken?: (token: string, fullText: string) => void, onSources?: (sources: Array<any>) => void}} params
+ * @returns {Promise<{conversationId: string | null, conversationTitle: string | null, reply: string, sources: Array<any>}>}
  */
-export const sendMessageApi = async ({ message, attachments = [], conversationId, onToken }) => {
+export const sendMessageApi = async ({ message, attachments = [], conversationId, taggedPaperId, taggedPaperTitle, isRagEnabled = true, onToken, onSources }) => {
     const response = await fetch(`${API_BASE}/api/conversation`, {
         method: 'POST',
         credentials: 'include',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ message, attachments, conversationId }),
+        body: JSON.stringify({ message, attachments, conversationId, taggedPaperId, taggedPaperTitle, isRagEnabled }),
     });
 
     if (!response.ok) {
@@ -85,6 +109,7 @@ export const sendMessageApi = async ({ message, attachments = [], conversationId
             conversationId: nextConversationId,
             conversationTitle,
             reply: '',
+            sources: [],
         };
     }
 
@@ -92,6 +117,7 @@ export const sendMessageApi = async ({ message, attachments = [], conversationId
     const decoder = new TextDecoder();
     let buffer = '';
     let fullReply = '';
+    let retrievedSources = [];
 
     while (true) {
         const { done, value } = await reader.read();
@@ -106,23 +132,25 @@ export const sendMessageApi = async ({ message, attachments = [], conversationId
         buffer = chunks.pop() || '';
 
         for (const chunk of chunks) {
-            const token = readSseChunk(chunk);
+            const result = processSseBlock(chunk, onSources);
+            if (!result) continue;
 
-            if (!token) {
-                continue;
+            if (result.type === 'sources') {
+                retrievedSources = result.sources;
+            } else if (result.type === 'token') {
+                fullReply += result.text;
+                onToken?.(result.text, fullReply);
             }
-
-            fullReply += token;
-            onToken?.(token, fullReply);
         }
     }
 
     if (buffer) {
-        const token = readSseChunk(buffer);
-
-        if (token) {
-            fullReply += token;
-            onToken?.(token, fullReply);
+        const result = processSseBlock(buffer, onSources);
+        if (result?.type === 'sources') {
+            retrievedSources = result.sources;
+        } else if (result?.type === 'token') {
+            fullReply += result.text;
+            onToken?.(result.text, fullReply);
         }
     }
 
@@ -130,6 +158,7 @@ export const sendMessageApi = async ({ message, attachments = [], conversationId
         conversationId: nextConversationId,
         conversationTitle,
         reply: fullReply,
+        sources: retrievedSources,
     };
 };
 
