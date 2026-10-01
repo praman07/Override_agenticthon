@@ -14,8 +14,8 @@ export function computeFileHash(buffer) {
 }
 
 /**
- * Extracts text from scanned/image-heavy PDFs using Gemini Flash Multimodal OCR.
- * Automatically called if local parsers cannot extract text.
+ * Extracts text from scanned/image-heavy or complex PDFs using Gemini Multimodal OCR.
+ * Tries the active Gemini Flash generation models sequentially.
  */
 async function extractWithGeminiOCR(buffer, fileName) {
   const apiKey = (process.env.GEMINI_API_KEY || env.GEMINI_API_KEY || '').trim();
@@ -24,64 +24,80 @@ async function extractWithGeminiOCR(buffer, fileName) {
   }
 
   const base64Data = buffer.toString('base64');
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const candidateModels = [
+    'gemini-flash-latest',
+    'gemini-3.5-flash-lite',
+    'gemini-3.5-flash',
+    'gemini-3.8-flash',
+  ];
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
+  let lastError = null;
+
+  for (const model of candidateModels) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
             {
-              text: 'Extract all readable text, titles, headings, and tables from this PDF document into clear Markdown or plain text. Preserve page sections if detectable.',
-            },
-            {
-              inlineData: {
-                mimeType: 'application/pdf',
-                data: base64Data,
-              },
+              parts: [
+                {
+                  text: 'Extract all readable text, titles, headings, sections, and tables from this PDF document into structured Markdown or plain text. Include all content verbatim without summarizing.',
+                },
+                {
+                  inlineData: {
+                    mimeType: 'application/pdf',
+                    data: base64Data,
+                  },
+                },
+              ],
             },
           ],
-        },
-      ],
-    }),
-  });
+        }),
+      });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Gemini OCR failed (${response.status}): ${errText}`);
+      if (!response.ok) {
+        const errText = await response.text();
+        lastError = new Error(`${model} failed (${response.status}): ${errText}`);
+        continue;
+      }
+
+      const data = await response.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const clean = text.trim();
+
+      if (clean && clean.length > 20) {
+        const pageSize = 2500;
+        const pages = [];
+        for (let i = 0; i < clean.length; i += pageSize) {
+          pages.push({
+            pageNumber: Math.floor(i / pageSize) + 1,
+            text: clean.slice(i, i + pageSize).trim(),
+          });
+        }
+
+        return {
+          pages: pages.length ? pages : [{ pageNumber: 1, text: clean }],
+          pageCount: pages.length || 1,
+          metadata: { engine: `gemini-ocr-${model}`, fileName },
+        };
+      }
+    } catch (err) {
+      lastError = err;
+    }
   }
 
-  const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  const clean = text.trim();
-
-  if (!clean) {
-    throw new Error('Gemini OCR returned empty text');
-  }
-
-  const pageSize = 2500;
-  const pages = [];
-  for (let i = 0; i < clean.length; i += pageSize) {
-    pages.push({
-      pageNumber: Math.floor(i / pageSize) + 1,
-      text: clean.slice(i, i + pageSize).trim(),
-    });
-  }
-
-  return {
-    pages: pages.length ? pages : [{ pageNumber: 1, text: clean }],
-    pageCount: pages.length || 1,
-    metadata: { engine: 'gemini-2.5-flash-ocr', fileName },
-  };
+  throw lastError || new Error('All Gemini OCR models failed to extract text');
 }
 
 /**
- * Robust local PDF parser using PDFParse, pdfjs, and intelligent stream analysis.
+ * Robust local PDF parser with multi-tiered fallbacks.
  */
 async function parsePdfLocally(buffer, fileName = 'document.pdf') {
-  // 1. pdf-parse v2 class
+  // 1. pdf-parse v2 class (fastest local extraction)
   try {
     const pdfParseModule = await import('pdf-parse');
     const PDFParseClass = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse;
@@ -167,9 +183,9 @@ async function parsePdfLocally(buffer, fileName = 'document.pdf') {
     console.warn(`[PDF Parser Notice] pdfjs fallback failed for ${fileName}:`, pdfjsErr.message);
   }
 
-  // 3. Automated Gemini Multimodal OCR fallback for scanned/complex PDFs
+  // 3. Automated Gemini Multimodal OCR fallback for scanned, image-only, or Vercel serverless PDFs
   try {
-    console.log(`[PDF Parser] Local parsing produced no text for ${fileName}. Running Gemini OCR...`);
+    console.log(`[PDF Parser] Invoking Gemini Multimodal OCR for ${fileName}...`);
     return await extractWithGeminiOCR(buffer, fileName);
   } catch (ocrErr) {
     console.warn(`[PDF Parser Notice] Gemini OCR fallback failed: ${ocrErr.message}`);
