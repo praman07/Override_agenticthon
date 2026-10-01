@@ -15,114 +15,118 @@ export function computeFileHash(buffer) {
 
 /**
  * Robust, production-grade PDF parser.
- * Handles serverless runtimes (Vercel) and local node environments flawlessly.
+ * Supports pdf-parse v2 (PDFParse class) and v1 callable function.
  */
 async function parsePdfLocally(buffer, fileName = 'document.pdf') {
-  // 1. Primary engine: pdf-parse (Standard Node/Serverless PDF text extraction)
+  // 1. Primary engine: pdf-parse v2 class (newest standard)
   try {
     const pdfParseModule = await import('pdf-parse');
-    const pdfParse = pdfParseModule.default || pdfParseModule;
-    
-    // Custom pager callback to split text per page cleanly
-    const pageTexts = [];
-    const options = {
-      pagerender: function (pageData) {
-        return pageData.getTextContent().then(function (textContent) {
-          let lastY, text = '';
-          for (let item of textContent.items) {
-            if (lastY == item.transform[5] || !lastY) {
-              text += item.str;
-            } else {
-              text += '\n' + item.str;
-            }
-            lastY = item.transform[5];
-          }
-          pageTexts.push(text);
-          return text;
-        });
-      },
-    };
+    const PDFParseClass = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse;
 
-    const data = await pdfParse(buffer, options);
-    const numPages = data.numpages || pageTexts.length || 1;
+    if (typeof PDFParseClass === 'function') {
+      const parser = new PDFParseClass({ data: buffer });
+      const textResult = await parser.getText();
 
-    if (pageTexts.length > 0) {
-      const validPages = pageTexts
-        .map((text, idx) => ({
-          pageNumber: idx + 1,
-          text: (text || '').replace(/\s+/g, ' ').trim(),
-        }))
-        .filter((p) => p.text.length > 0);
+      if (textResult?.pages && Array.isArray(textResult.pages) && textResult.pages.length > 0) {
+        const validPages = textResult.pages
+          .map((p, idx) => ({
+            pageNumber: p.num || idx + 1,
+            text: (p.text || '').replace(/\s+/g, ' ').trim(),
+          }))
+          .filter((p) => p.text.length > 0);
 
-      if (validPages.length > 0) {
+        if (validPages.length > 0) {
+          return {
+            pages: validPages,
+            pageCount: textResult.total || validPages.length,
+            metadata: { engine: 'pdf-parse-v2', fileName },
+          };
+        }
+      }
+
+      if (textResult?.text && textResult.text.trim().length > 0) {
+        const cleanText = textResult.text.replace(/\s+/g, ' ').trim();
+        const pageSize = 2500;
+        const pages = [];
+        for (let i = 0; i < cleanText.length; i += pageSize) {
+          pages.push({
+            pageNumber: Math.floor(i / pageSize) + 1,
+            text: cleanText.slice(i, i + pageSize).trim(),
+          });
+        }
         return {
-          pages: validPages,
-          pageCount: numPages,
-          metadata: { engine: 'pdf-parse', fileName },
+          pages: pages.length ? pages : [{ pageNumber: 1, text: cleanText }],
+          pageCount: textResult.total || pages.length,
+          metadata: { engine: 'pdf-parse-v2-fulltext', fileName },
         };
       }
     }
 
-    if (data.text && data.text.trim().length > 0) {
-      const cleanText = data.text.replace(/\s+/g, ' ').trim();
-      const pageSize = 2500;
-      const pages = [];
-      for (let i = 0; i < cleanText.length; i += pageSize) {
-        pages.push({
-          pageNumber: Math.floor(i / pageSize) + 1,
-          text: cleanText.slice(i, i + pageSize).trim(),
-        });
+    // Fallback for pdf-parse v1 (callable function)
+    const callableParser = typeof pdfParseModule === 'function' ? pdfParseModule : pdfParseModule.default;
+    if (typeof callableParser === 'function') {
+      const data = await callableParser(buffer);
+      if (data?.text && data.text.trim().length > 0) {
+        const cleanText = data.text.replace(/\s+/g, ' ').trim();
+        const pageSize = 2500;
+        const pages = [];
+        for (let i = 0; i < cleanText.length; i += pageSize) {
+          pages.push({
+            pageNumber: Math.floor(i / pageSize) + 1,
+            text: cleanText.slice(i, i + pageSize).trim(),
+          });
+        }
+        return {
+          pages: pages.length ? pages : [{ pageNumber: 1, text: cleanText }],
+          pageCount: data.numpages || pages.length,
+          metadata: { engine: 'pdf-parse-v1', fileName },
+        };
       }
-      return {
-        pages,
-        pageCount: numPages || pages.length,
-        metadata: { engine: 'pdf-parse-fulltext', fileName },
-      };
     }
   } catch (pdfParseErr) {
     console.warn(`[PDF Parser Notice] pdf-parse extraction failed for ${fileName}:`, pdfParseErr.message);
   }
 
-  // 2. Secondary fallback: Extract text from uncompressed PDF streams
+  // 2. Fallback: Extract plain text using pdfjs-dist if available
   try {
-    const rawString = buffer.toString('latin1');
-    const textMatches = rawString.match(/\(([^()]{2,})\)\s*(?:Tj|'|")/g) || [];
-    const words = textMatches
-      .map((m) => m.replace(/^[(\s]+/, '').replace(/[)\s'"]+$/, ''))
-      .filter((w) => w.length > 1 && !w.startsWith('/') && /^[\x20-\x7E]+$/.test(w));
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const uint8 = new Uint8Array(buffer);
+    const loadingTask = pdfjs.getDocument({
+      data: uint8,
+      disableFontFace: true,
+      useSystemFonts: true,
+      isEvalSupported: false,
+    });
+    const doc = await loadingTask.promise;
+    const numPages = doc.numPages || 1;
+    const pages = [];
 
-    if (words.length > 15) {
-      const fullText = words.join(' ');
-      const pageSize = 2500;
-      const pages = [];
-      for (let i = 0; i < fullText.length; i += pageSize) {
-        pages.push({
-          pageNumber: Math.floor(i / pageSize) + 1,
-          text: fullText.slice(i, i + pageSize).trim(),
-        });
+    for (let i = 1; i <= numPages; i++) {
+      const page = await doc.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = (textContent?.items || [])
+        .map((item) => (typeof item?.str === 'string' ? item.str : ''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (pageText) {
+        pages.push({ pageNumber: i, text: pageText });
       }
+    }
+
+    if (pages.length > 0) {
       return {
-        pages: pages.length ? pages : [{ pageNumber: 1, text: fullText }],
-        pageCount: Math.max(pages.length, 1),
-        metadata: { engine: 'stream-fallback', fileName },
+        pages,
+        pageCount: numPages,
+        metadata: { engine: 'pdfjs-dist', fileName },
       };
     }
-  } catch (streamErr) {
-    console.warn(`[PDF Parser Notice] Stream fallback error:`, streamErr.message);
+  } catch (pdfjsErr) {
+    console.warn(`[PDF Parser Notice] pdfjs fallback failed for ${fileName}:`, pdfjsErr.message);
   }
 
-  // 3. Last-resort fallback: Extract printable ASCII characters only
-  const cleanAscii = buffer
-    .toString('utf-8')
-    .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  return {
-    pages: [{ pageNumber: 1, text: cleanAscii.slice(0, 50000) || 'Document text extracted.' }],
-    pageCount: 1,
-    metadata: { engine: 'raw-ascii', fileName },
-  };
+  throw new Error(`Failed to extract readable text from PDF: ${fileName}. The PDF may be scanned or empty.`);
 }
 
 /**
@@ -251,7 +255,7 @@ export async function extractPagesFromPdf(buffer, fileName = 'paper.pdf') {
     }
   }
 
-  // 5. Robust local parser with pdf-parse and stream fallbacks
+  // 5. Robust local parser with pdf-parse v2 class
   return parsePdfLocally(buffer, fileName);
 }
 
