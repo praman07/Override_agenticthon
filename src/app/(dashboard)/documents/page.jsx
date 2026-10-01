@@ -78,10 +78,16 @@ export default function DocumentsPage() {
           body: formData,
         });
 
-        const data = await response.json();
+        const rawText = await response.text();
+        let data = {};
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          data = { error: rawText.slice(0, 200) || 'Server processing error / timeout' };
+        }
 
         if (!response.ok) {
-          throw new Error(data.error || 'Failed to process document');
+          throw new Error(data.error || `Upload failed with status ${response.status}`);
         }
 
         setUploadProgress({

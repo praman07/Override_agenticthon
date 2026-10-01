@@ -100,13 +100,13 @@ export async function generateEmbedding(text) {
 }
 
 /**
- * Batch generates embeddings for multiple chunks using sequential generation with rate control.
+ * Batch generates embeddings for multiple chunks using high-speed concurrent batching.
  *
  * @param {string[]} texts
- * @param {number} [batchSize=5]
+ * @param {number} [batchSize=6]
  * @returns {Promise<number[][]>}
  */
-export async function generateEmbeddings(texts, batchSize = 5) {
+export async function generateEmbeddings(texts, batchSize = 6) {
   if (!Array.isArray(texts) || texts.length === 0) {
     return [];
   }
@@ -115,11 +115,13 @@ export async function generateEmbeddings(texts, batchSize = 5) {
 
   for (let i = 0; i < texts.length; i += batchSize) {
     const chunkBatch = texts.slice(i, i + batchSize);
+    const batchEmbeddings = await Promise.all(
+      chunkBatch.map((chunkText) => generateEmbedding(chunkText))
+    );
+    allEmbeddings.push(...batchEmbeddings);
 
-    for (const chunkText of chunkBatch) {
-      const singleEmbedding = await generateEmbedding(chunkText);
-      allEmbeddings.push(singleEmbedding);
-      await new Promise((r) => setTimeout(r, 60));
+    if (i + batchSize < texts.length) {
+      await new Promise((r) => setTimeout(r, 40));
     }
   }
 
