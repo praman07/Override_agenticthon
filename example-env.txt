@@ -33,3 +33,8 @@ PORT=3000
 # Vector Database (Preserved for RAG phase)
 VECTOR_DB_URL=
 VECTOR_DB_API_KEY=
+
+# Google OAuth (for "Continue with Google" sign-in)
+GOOGLE_CLIENT_ID=your_google_client_id_here
+GOOGLE_CLIENT_SECRET=your_google_client_secret_here
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_client_id_here

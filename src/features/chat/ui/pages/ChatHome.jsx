@@ -778,7 +778,9 @@ const ChatHome = () => {
                   title="Remove document tag"
                   aria-label="Remove document tag"
                 >
-                  ✕
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
             )}
@@ -804,7 +806,9 @@ const ChatHome = () => {
                       className="ml-1 text-zinc-400 hover:text-rose-400 focus:outline-none"
                       aria-label="Remove attachment"
                     >
-                      ✕
+                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
                     </button>
                   </div>
                 ))}

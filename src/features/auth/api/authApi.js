@@ -90,3 +90,11 @@ export const meApi = () => authRequest('/api/auth/me');
  * @returns {Promise<any>}
  */
 export const logoutApi = () => authRequest('/api/auth/logout', 'POST');
+
+/**
+ * Authenticates a user via Google OAuth credential (ID token).
+ *
+ * @param {{ credential: string }} payload
+ * @returns {Promise<any>}
+ */
+export const googleLoginApi = (payload) => authRequest('/api/auth/google', 'POST', payload);

@@ -1,5 +1,5 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
-import { loginApi, logoutApi, meApi, registerApi, switchAccountApi } from '../api/authApi.js';
+import { loginApi, logoutApi, meApi, registerApi, switchAccountApi, googleLoginApi } from '../api/authApi.js';
 
 // Local storage helpers for multi-account management
 const ACCOUNTS_STORAGE_KEY = 'override_saved_accounts';
@@ -93,6 +93,10 @@ export const switchUserAccount = createAsyncThunk('auth/switchUserAccount', asyn
 
 export const fetchMe = createAsyncThunk('auth/fetchMe', async () => {
     return meApi();
+});
+
+export const googleLoginUser = createAsyncThunk('auth/googleLoginUser', async (credential) => {
+    return googleLoginApi({ credential });
 });
 
 export const logoutUser = createAsyncThunk('auth/logoutUser', async (_, { dispatch, getState }) => {
@@ -226,6 +230,24 @@ const authSlice = createSlice({
                     state.isAuthenticated = false;
                     state.isAuthChecked = true;
                 }
+            })
+            .addCase(googleLoginUser.pending, (state) => {
+                state.loading = true;
+                state.error = null;
+            })
+            .addCase(googleLoginUser.fulfilled, (state, action) => {
+                state.loading = false;
+                state.user = action.payload.user;
+                state.isAuthenticated = true;
+                state.isAuthChecked = true;
+                state.isAddingAccount = false;
+                storeAccountInStorage(action.payload.user, action.payload.token);
+                state.savedAccounts = getSavedAccounts();
+            })
+            .addCase(googleLoginUser.rejected, (state, action) => {
+                state.loading = false;
+                state.error = action.error.message;
+                state.isAuthChecked = true;
             });
     },
 });

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import GoogleSignInButton from '@/components/GoogleSignInButton.jsx';
 import { resetChat } from '@/features/chat/state/chatSlice.js';
 import useAuth from '@/features/auth/hooks/useAuth.js';
 
@@ -12,7 +13,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const dispatch = useDispatch();
-  const { loading, error, isAuthenticated, clearError, login, savedAccounts, isAddingAccount, cancelAddAccount } = useAuth();
+  const { loading, error, isAuthenticated, clearError, login, googleLogin, savedAccounts, isAddingAccount, cancelAddAccount } = useAuth();
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -35,6 +36,12 @@ const Login = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
     await login(form);
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    if (credentialResponse?.credential) {
+      await googleLogin(credentialResponse.credential);
+    }
   };
 
   const handleCancelAddAccount = () => {
@@ -61,7 +68,22 @@ const Login = () => {
       <h2 className="mt-2 text-3xl font-semibold text-zinc-100">Log in</h2>
       <p className="mt-1 text-sm text-zinc-400">Continue your Override AI workspace session.</p>
 
-      <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+      {/* Google Sign-In Button */}
+      <div className="mt-6 flex justify-center">
+        <GoogleSignInButton
+          onSuccess={handleGoogleSuccess}
+          onError={() => console.error('Google Login Failed')}
+          text="continue_with"
+        />
+      </div>
+
+      <div className="my-6 flex items-center gap-3">
+        <div className="h-px flex-1 bg-white/10" />
+        <span className="text-xs text-zinc-500 uppercase tracking-wider">or</span>
+        <div className="h-px flex-1 bg-white/10" />
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
         <label className="block">
           <span className="mb-1.5 block text-sm text-zinc-300">Email</span>
           <input

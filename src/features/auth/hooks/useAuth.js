@@ -5,6 +5,7 @@ import {
     clearAuthError,
     fetchMe,
     loginUser,
+    googleLoginUser,
     logoutUser,
     prepareAddAccount,
     refreshSavedAccounts,
@@ -20,6 +21,8 @@ const useAuth = () => {
     const register = useCallback((credentials) => dispatch(registerUser(credentials)), [dispatch]);
 
     const login = useCallback((credentials) => dispatch(loginUser(credentials)), [dispatch]);
+
+    const googleLogin = useCallback((credential) => dispatch(googleLoginUser(credential)), [dispatch]);
 
     const switchAccount = useCallback((token) => dispatch(switchUserAccount(token)), [dispatch]);
 
@@ -47,6 +50,7 @@ const useAuth = () => {
         savedAccounts,
         register,
         login,
+        googleLogin,
         switchAccount,
         me,
         logout,

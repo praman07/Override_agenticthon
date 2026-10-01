@@ -17,6 +17,8 @@ const env = {
     MONGODB_URI: process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/genai_chatgpt',
     VECTOR_DB_URL: process.env.VECTOR_DB_URL || '',
     VECTOR_DB_API_KEY: process.env.VECTOR_DB_API_KEY || '',
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
 };
 
 export default env;
